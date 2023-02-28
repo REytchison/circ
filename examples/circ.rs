@@ -17,6 +17,8 @@ use circ::cfg::{
 };
 #[cfg(feature = "c")]
 use circ::front::c::{self, C};
+#[cfg(feature = "python")]
+use circ::front::python::{self, Python};
 #[cfg(all(feature = "smt", feature = "datalog"))]
 use circ::front::datalog::{self, Datalog};
 #[cfg(all(feature = "smt", feature = "zok"))]
@@ -114,7 +116,8 @@ enum Language {
     Zsharp,
     Datalog,
     C,
-    Auto,
+    Python,
+    Auto
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -122,6 +125,7 @@ pub enum DeterminedLanguage {
     Zsharp,
     Datalog,
     C,
+    Python
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -148,6 +152,7 @@ fn determine_language(l: &Language, input_path: &Path) -> DeterminedLanguage {
         Language::Datalog => DeterminedLanguage::Datalog,
         Language::Zsharp => DeterminedLanguage::Zsharp,
         Language::C => DeterminedLanguage::C,
+        Language::Python => DeterminedLanguage::Python,
         Language::Auto => {
             let p = input_path.to_str().unwrap();
             if p.ends_with(".zok") {
@@ -156,6 +161,8 @@ fn determine_language(l: &Language, input_path: &Path) -> DeterminedLanguage {
                 DeterminedLanguage::Datalog
             } else if p.ends_with(".c") || p.ends_with(".cpp") || p.ends_with(".cc") {
                 DeterminedLanguage::C
+            } else if p.ends_with(".py") {
+                DeterminedLanguage::Python
             } else {
                 println!("Could not deduce the input language from path '{p}', please set the language manually");
                 std::process::exit(2)
@@ -219,6 +226,17 @@ fn main() {
         #[cfg(not(feature = "c"))]
         DeterminedLanguage::C => {
             panic!("Missing feature: c");
+        }
+        #[cfg(feature = "python")]
+        DeterminedLanguage::Python => {
+            let inputs = python::Inputs {
+                file: options.path
+            };
+            Python::gen(inputs)
+        }
+        #[cfg(not(feature = "python"))]
+        DeterminedLanguage::Python => {
+            panic!("Missing feature: python");
         }
     };
     let cs = match mode {
