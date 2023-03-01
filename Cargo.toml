@@ -76,6 +76,10 @@ bellman = ["r1cs", "dep:bellman", "ff", "group", "pairing", "serde_bytes", "binc
 name = "circ"
 
 [[example]]
+name = "py_parser"
+required-features = ["python"]
+
+[[example]]
 name = "zk"
 required-features = ["r1cs"]
 
