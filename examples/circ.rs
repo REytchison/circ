@@ -389,8 +389,10 @@ fn main() {
         #[cfg(feature = "smt")]
         Backend::Smt { .. } => {
             let main_comp = cs.get("main").clone();
+            println!("outputs: {:?}", main_comp.outputs);
             assert_eq!(main_comp.outputs.len(), 1);
             let model = find_model(&main_comp.outputs[0]);
+            println!("model: {:?}", model);
             if options.circ.datalog.lint_prim_rec {
                 match model {
                     Some(m) => {

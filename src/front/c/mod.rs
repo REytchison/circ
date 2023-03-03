@@ -52,6 +52,7 @@ impl FrontEnd for C {
         let mut cs = Computations::new();
         let main_comp = g.circify().consume().borrow().clone();
         cs.comps.insert("main".to_string(), main_comp);
+        println!("main: {:?}", cs.comps.get("main"));
         while !g.function_queue.is_empty() {
             let call_term = g.function_queue.pop().unwrap();
             if let Op::Call(name, arg_sorts, rets) = call_term.op() {
