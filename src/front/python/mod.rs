@@ -5,19 +5,23 @@ pub mod term;
 pub mod ty;
 
 use crate::ir::term::{Computations};
-use super::{FrontEnd};
+use super::{FrontEnd, Mode};
 use std::path::PathBuf;
-use crate::ir::term::{bv_lit};
+use crate::ir::term::{bv_lit, bool_lit, term, NOT, AND, OR, Term};
 use parser::PythonParser;
 use python_parser::ast::{CompoundStatement, Funcdef, Statement, Expression, IntegerType};
 use term::{PyTerm, PyTermData, Pyt};
 use std::fs;
 use std::collections::HashMap;
-use crate::circify::{CircError, Circify};
+use crate::circify::{CircError, Circify, Val};
 use std::fmt::Display;
 use std::str::FromStr;
 use std::cell::RefCell;
 use crate::front::python::ty::Ty;
+
+//use crate::ir::term::Op;
+//use crate::ir::term::leaf_term;
+//use crate::ir::term::Value;
 
 /// Inputs to Python compiler
 pub struct Inputs {
@@ -42,9 +46,9 @@ impl FrontEnd for Python{
         pygen.entry_fn("main");
         let mut cs = Computations::new();
         //println!("{:?}", pygen);
-        //comp.outputs.push(leaf_term(Op::Const(Value::Bool(false))));
         let main_comp = pygen.circify().consume().borrow().clone();
-        println!("main: {:?}", main_comp);
+        //main_comp.outputs.push(leaf_term(Op::Const(Value::Bool(false))));
+        println!("main: {:?}", main_comp.outputs);
         cs.comps.insert("main".to_string(), main_comp);
         cs
     }
@@ -52,8 +56,13 @@ impl FrontEnd for Python{
 
 #[derive(Debug)]
 struct PyGen {
+    mode: Mode,
     circ: RefCell<Circify<Pyt>>,
-    functions: HashMap<String, Funcdef>
+    functions: HashMap<String, Funcdef>,
+    /// Proof mode; find evaluations satisfying these.
+    assumptions: Vec<Term>,
+    /// Proof mode; find evaluations violating these.
+    assertions: Vec<Term>
 }
 
 impl PyGen {
@@ -76,8 +85,12 @@ impl PyGen {
             }
         }
         Self{
+            mode: Mode::Proof,
             circ: RefCell::new(Circify::new(Pyt::new())),
-            functions: functions}
+            functions: functions,
+            assumptions: vec![],
+            assertions: vec![]
+        }
     }
 
     fn entry_fn(&mut self, name: &str) {
@@ -90,6 +103,33 @@ impl PyGen {
         self.circ_enter_fn(name.to_owned(), Some(Ty::Int(32)));
         // TODO handle more than one statement
         self.gen_stmt(&func.code[0]);
+
+        if let Some(_r) = self.circ_exit_fn() {
+            match self.mode {
+                Mode::Proof => {
+                    // Ensure non-empty
+                    self.assumptions.push(bool_lit(true));
+                    self.assertions.push(bool_lit(true));
+                    let assumptions_hold = term(AND, self.assumptions.clone());
+                    let an_assertion_doesnt = term(
+                        OR,
+                        self.assertions
+                            .iter()
+                            .map(|a| term![NOT; a.clone()])
+                            .collect(),
+                    );
+                    let bug_if = term![AND; assumptions_hold, an_assertion_doesnt];
+                    self.circ
+                        .borrow()
+                        .cir_ctx()
+                        .cs
+                        .borrow_mut()
+                        .outputs
+                        .push(bug_if);
+                }
+                _ => unimplemented!("Mode: {}", self.mode),
+            }
+        }
     }
 
     fn gen_stmt(&mut self, stmt: &Statement){
@@ -143,5 +183,9 @@ impl PyGen {
     /// TODO: Add span for debugging
     fn unwrap<PyTerm, E: Display>(&self, r: Result<PyTerm, E>) -> PyTerm {
         r.unwrap_or_else(|e| self.err(e))
+    }
+
+    fn circ_exit_fn(&self) -> Option<Val<PyTerm>> {
+        self.circ.borrow_mut().exit_fn()
     }
 }
