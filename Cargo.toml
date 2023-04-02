@@ -68,7 +68,7 @@ python = ["python-parser"]
 smt = ["rsmt2", "ieee754"]
 lp = ["good_lp", "lp-solvers"]
 aby = ["lp"]
-r1cs = []
+r1cs = ["bincode"]
 spartan = ["r1cs", "dep:spartan", "merlin", "curve25519-dalek", "bincode", "gmp-mpfr-sys"]
 bellman = ["r1cs", "dep:bellman", "ff", "group", "pairing", "serde_bytes", "bincode", "gmp-mpfr-sys"]
 
