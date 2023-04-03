@@ -7,10 +7,10 @@ pub mod ty;
 use crate::ir::term::{Computations};
 use super::{FrontEnd, Mode};
 use std::path::PathBuf;
-use crate::ir::term::{bv_lit, bool_lit, term, NOT, AND, OR, Term};
+use crate::ir::term::{bv_lit, bool_lit, term, NOT, AND, OR, Term, Sort, check, Op, Value, leaf_term};
 use parser::PythonParser;
 use python_parser::ast::{CompoundStatement, Funcdef, Statement, Expression, IntegerType};
-use term::{PyTerm, PyTermData, Pyt};
+use term::{PyTerm, PyTermData, Pyt, cast_to_bool};
 use std::fs;
 use std::collections::HashMap;
 use crate::circify::{CircError, Circify, Val};
@@ -26,7 +26,9 @@ use crate::front::python::ty::Ty;
 /// Inputs to Python compiler
 pub struct Inputs {
     /// The file to look for `main` in.
-    pub file: PathBuf
+    pub file: PathBuf,
+    /// enable SV competition builtin functions
+    pub sv_functions: bool
     // TODO MAYBE INCLUDE FIELD?
     // /// The mode to generate for (MPC or proof). Effects visibility.
     //pub mode: Mode
@@ -40,9 +42,9 @@ impl FrontEnd for Python{
     type Inputs = Inputs;
     fn gen(i: Self::Inputs) -> Computations{
         // TODO error handling
-        let code: String = fs::read_to_string(i.file).unwrap();
+        let code: String = fs::read_to_string(&i.file).unwrap();
         let ast: Vec<Statement>  = PythonParser::parse_file(&code);
-        let mut pygen = PyGen::new(ast);
+        let mut pygen = PyGen::new(i, ast);
         pygen.entry_fn("main");
         let mut cs = Computations::new();
         //println!("{:?}", pygen);
@@ -62,11 +64,13 @@ struct PyGen {
     /// Proof mode; find evaluations satisfying these.
     assumptions: Vec<Term>,
     /// Proof mode; find evaluations violating these.
-    assertions: Vec<Term>
+    assertions: Vec<Term>,
+    /// enable SV competition builtin functions
+    sv_functions: bool
 }
 
 impl PyGen {
-    fn new(ast: Vec<Statement>) -> Self {
+    fn new(config: Inputs, ast: Vec<Statement>) -> Self {
         let mut functions = HashMap::new();
         for stmt in ast{
 
@@ -89,7 +93,8 @@ impl PyGen {
             circ: RefCell::new(Circify::new(Pyt::new())),
             functions: functions,
             assumptions: vec![],
-            assertions: vec![]
+            assertions: vec![],
+            sv_functions: config.sv_functions
         }
     }
 
@@ -103,7 +108,11 @@ impl PyGen {
         self.circ_enter_fn(name.to_owned(), Some(Ty::Int(32)));
         // TODO handle more than one statement
         self.gen_stmt(&func.code[0]);
-
+        // manually add calls to builtins for testing
+        let assume_term = PyTerm{term: PyTermData::Bool(leaf_term(Op::Const(Value::Bool(false))))};
+        let assert_term = PyTerm{term: PyTermData::Bool(leaf_term(Op::Const(Value::Bool(false))))};
+        self.maybe_handle_builtins(&"__VERIFIER_assume".to_string(), &vec![assume_term]);
+        self.maybe_handle_builtins(&"__VERIFIER_assert".to_string(), &vec![assert_term]);
         if let Some(_r) = self.circ_exit_fn() {
             match self.mode {
                 Mode::Proof => {
@@ -147,10 +156,46 @@ impl PyGen {
         match expr {
             Expression::Int(int) => {
                 self.integer(int)
-            }
+                
+            },
+/*            Expression::Call(node) => {
+                let CallExpression { callee, arguments } = &node.node;
+                // Get function name
+                let fname = name_from_expr(&callee.node);
+
+                // Get arguments
+                let args = arguments
+                    .iter()
+                    .map(|e| self.gen_expr(&e.node))
+                    .collect::<Vec<_>>();
+
+                let maybe_return = self.maybe_handle_builtins(&fname, &args);
+                if let Some(r) = maybe_return {
+                    Ok(r)
+                } else {
+                    unimplemented!("Can only handle builtin functions")
+                }*/
             _ => unimplemented!("Expr {:#?} hasn't been implemented", expr)
         }
     }
+
+    /// Returns whether this was a builtin, and thus has been handled.
+    fn maybe_handle_builtins(&mut self, name: &String, args: &Vec<PyTerm>) -> Option<PyTerm> {
+        if self.sv_functions && (name == "__VERIFIER_assert" || name == "__VERIFIER_assume") {
+            assert!(args.len() == 1);
+            let bool_arg = cast_to_bool(args[0].clone());
+            assert!(matches!(check(&bool_arg), Sort::Bool));
+            if name == "__VERIFIER_assert" {
+                self.assertions.push(bool_arg);
+            } else {
+                self.assumptions.push(bool_arg);
+            }
+            Some(Ty::Bool.default(self.circ.borrow().cir_ctx()))
+        } else {
+            None
+        }
+    }
+
 
     fn integer(&self, int: &IntegerType) -> PyTerm {
         let radix:u32 = 10;

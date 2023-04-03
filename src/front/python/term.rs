@@ -4,7 +4,7 @@
 //use crate::circify::Embeddable;
 //use ty::Ty;
 //use crate::ir::term::{term, Term};
-use crate::ir::term::{Term};
+use crate::ir::term::{Term, Op, Sort, term};
 use std::fmt::{self, Display, Formatter};
 use crate::circify::{CirCtx, Embeddable};
 use crate::ir::term::{bv_lit};
@@ -14,17 +14,48 @@ use crate::circify::Typed;
 
 #[derive(Clone, Debug)]
 pub enum PyTermData {
+    Bool(Term),
     Int(usize, Term)
 }
 
 impl PyTermData {
     pub fn type_(&self) -> Ty {
         match self {
+            Self::Bool(_) => Ty::Bool,
             Self::Int(w, _) => Ty::Int(*w)
+        }
+    }
+    
+    pub fn simple_term(&self) -> Term {
+        match self {
+            PyTermData::Bool(b) => b.clone(),
+            PyTermData::Int(_, b) => b.clone(),
+            _ => panic!(),
         }
     }
 }
 
+pub fn cast_to_bool(t: PyTerm) -> Term {
+    cast(Some(Ty::Bool), t).term.simple_term()
+}
+
+pub fn cast(to_ty: Option<Ty>, t: PyTerm) -> PyTerm {
+    let ty = t.term.type_();
+    match t.term {
+        PyTermData::Bool(ref term) => match to_ty {
+            Some(Ty::Bool) => t.clone(),
+            Some(Ty::Int(_w)) => unimplemented!("Casting from bool to int not added yet"),
+            None => panic!("Bad cast from {} to {:?}", ty, to_ty)
+        },
+        PyTermData::Int(w, ref term) => match to_ty {
+            Some(Ty::Bool) => PyTerm {
+                term: PyTermData::Bool(term![Op::Not; term![Op::Eq; bv_lit(0, w), term.clone()]])
+            },
+            Some(Ty::Int(w)) => unimplemented!("Casting from int to int not added yet"),
+            None => panic!("Bad cast from {} to {:?}", ty, to_ty)
+        }
+    }
+}
 #[derive(Clone, Debug)]
 pub struct PyTerm {
     pub term: PyTermData,

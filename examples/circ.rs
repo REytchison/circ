@@ -237,7 +237,8 @@ fn main() {
         #[cfg(feature = "python")]
         DeterminedLanguage::Python => {
             let inputs = python::Inputs {
-                file: options.path
+                file: options.path,
+                sv_functions: options.circ.c.sv_functions
             };
             Python::gen(inputs)
         }
