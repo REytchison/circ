@@ -10,8 +10,8 @@ use super::{FrontEnd, Mode};
 use std::path::PathBuf;
 use crate::ir::term::{bv_lit, term, NOT, AND, OR, Term, Sort, check, bool_lit};
 use parser::PythonParser;
-use python_parser::ast::{CompoundStatement, Funcdef, Statement, Expression, IntegerType, Argument};
-use term::{PyTerm, PyTermData, Pyt, cast_to_bool};
+use python_parser::ast::{CompoundStatement, Funcdef, Statement, Expression, IntegerType, Argument, Bop};
+use term::{PyTerm, PyTermData, Pyt, cast_to_bool, eq, neq, add, bitxor};
 use std::fs;
 use std::collections::HashMap;
 use crate::circify::{CircError, Circify, Val, Loc};
@@ -127,13 +127,6 @@ impl PyGen {
         for ref stmt in func.code{
             self.gen_stmt(stmt);
         }
-        // manually add calls to builtins for testing
-        /*
-        let assume_term = PyTerm{term: PyTermData::Bool(leaf_term(Op::Const(Value::Bool(false))))};
-        let assert_term = PyTerm{term: PyTermData::Bool(leaf_term(Op::Const(Value::Bool(false))))};
-        self.maybe_handle_builtins(&"__VERIFIER_assume".to_string(), &vec![assume_term]);
-        self.maybe_handle_builtins(&"__VERIFIER_assert".to_string(), &vec![assert_term]);
-        */
         if let Some(_r) = self.circ_exit_fn() {
             match self.mode {
                 Mode::Proof => {
@@ -203,6 +196,25 @@ impl PyGen {
             Expression::True => {
                 self.boolean(true)
             },
+            Expression::Bop(bop, expr0, expr1) => {
+                let t0 = self.gen_expr(expr0);
+                let t1 = self.gen_expr(expr1);
+                match bop {
+                    Bop::Eq => {
+                        eq(t0, t1).unwrap()
+                    },
+                    Bop::Neq => {
+                        neq(t0, t1).unwrap()
+                    },
+                    Bop::Add => {
+                        add(t0, t1).unwrap()
+                    },
+                    Bop::BitXor => {
+                        bitxor(t0, t1).unwrap()
+                    }
+                    _ => unimplemented!("Binary op not implemented yet")
+                }
+            }
             Expression::Call(name_expr, arguments) => {
                 // Get arguments
                 let args = arguments

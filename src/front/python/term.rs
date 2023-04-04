@@ -1,7 +1,7 @@
 //! Terms in Python variant
 #![allow(warnings)]
 #![allow(unused)]
-use crate::ir::term::{Term, Op, Sort, term};
+use crate::ir::term::{Term, Op, Sort, term, BvNaryOp};
 use std::fmt::{self, Display, Formatter};
 use crate::circify::{CirCtx, Embeddable};
 use crate::ir::term::{bv_lit};
@@ -165,4 +165,78 @@ impl Embeddable for Pyt{
             term: PyTermData::Int(32,bv_lit(num, size))
         }
     }
+}
+
+
+pub fn eq(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
+    wrap_bin_cmp("==", eq_base, a, b)
+}
+
+pub fn neq(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
+    wrap_bin_cmp("!=", neq_base, a, b)
+}
+
+// TODO IS BvNaryOp THE CORRECT PRIMITIVE (vs Integer type)
+fn add_uint(a: Term, b: Term) -> Term {
+    term![Op::BvNaryOp(BvNaryOp::Add); a, b]
+}
+
+pub fn add(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
+    wrap_bin_arith("+", add_uint, a, b)
+}
+
+fn bitxor_uint(a: Term, b: Term) -> Term {
+    term![Op::BvNaryOp(BvNaryOp::Xor); a, b]
+}
+
+pub fn bitxor(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
+    wrap_bin_arith("^", bitxor_uint, a, b)
+}
+
+fn wrap_bin_arith(
+    name: &str,
+    func: fn(Term, Term) -> Term,
+    a: PyTerm,
+    b: PyTerm,
+) -> Result<PyTerm, String> {
+    // TODO CONVERSIONS
+    match (&a.term, &b.term) {
+        // TODO WIDENING SEMANTICS AND BOOL ARITHMETIC
+        (PyTermData::Int(wx, x), PyTermData::Int(wy, y)) if wx == wy => {
+            Ok(PyTerm {
+                term: PyTermData::Int(*wx, func(x.clone(), y.clone()))
+            })
+        },
+        (_, _) => Err(format!("Cannot perform op '{name}' on {a} and {b}")),
+    }
+}
+
+fn wrap_bin_cmp(
+    // TODO HANDLE MORE DATATYPES AND CONVERSIONS
+    name: &str,
+    func: fn(Term, Term) -> Term,
+    a: PyTerm,
+    b: PyTerm,
+) -> Result<PyTerm, String> {
+    match (&a.term, &b.term) {
+        (PyTermData::Int(_w0, t0), PyTermData::Int(_w1, t1)) => {
+            Ok(PyTerm{
+                term: PyTermData::Bool(func(t0.clone(), t1.clone()))
+            })
+        },
+        (PyTermData::Bool(t0), PyTermData::Bool(t1)) => {
+            Ok(PyTerm{
+                term: PyTermData::Bool(func(t0.clone(), t1.clone()))
+            })
+        },
+        (_, _) => Err(format!("Cannot perform op {name} on {a} and {b}"))
+    }
+}
+
+fn eq_base(a: Term, b: Term) -> Term {
+    term![Op::Eq; a, b]
+}
+
+fn neq_base(a: Term, b: Term) -> Term {
+    term![Op::Not; term![Op::Eq; a, b]]
 }
