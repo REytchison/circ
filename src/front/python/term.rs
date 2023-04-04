@@ -108,11 +108,19 @@ impl Embeddable for Pyt{
         visibility: Option<PartyId>,
         precompute: Option<Self::T>,
     ) -> Self::T{
-        // TODO ADD REAL INPUT
-        let size:usize = 32;
-        let num:i32 = 0;
-        Self::T {
-            term: PyTermData::Int(32,bv_lit(num, size))
+        match ty {
+            Ty::Int(w) => Self::T{
+                term: PyTermData::Int(
+                    *w,
+                    ctx.cs.borrow_mut().new_var(
+                        &name,
+                        Sort::BitVector(*w),
+                        visibility,
+                        precompute.map(|p| p.term.simple_term())
+                    )
+                )
+            },
+            _ => unimplemented!("input type not supported yet")
         }
     }
 

@@ -4,7 +4,8 @@ pub mod parser;
 pub mod term;
 pub mod ty;
 
-use crate::ir::term::{Computations};
+use crate::ir::term::{Computations, PartyId};
+use crate::front::PUBLIC_VIS;
 use super::{FrontEnd, Mode};
 use std::path::PathBuf;
 use crate::ir::term::{bv_lit, term, NOT, AND, OR, Term, Sort, check, bool_lit};
@@ -13,7 +14,7 @@ use python_parser::ast::{CompoundStatement, Funcdef, Statement, Expression, Inte
 use term::{PyTerm, PyTermData, Pyt, cast_to_bool};
 use std::fs;
 use std::collections::HashMap;
-use crate::circify::{CircError, Circify, Val};
+use crate::circify::{CircError, Circify, Val, Loc};
 use std::fmt::Display;
 use std::str::FromStr;
 use std::cell::RefCell;
@@ -51,6 +52,20 @@ impl FrontEnd for Python{
         cs
     }
 }
+/*
+#[derive(Clone)]
+enum PyLoc {
+    Var(Loc)
+}
+
+impl PyLoc {
+    fn loc(&self) -> &Loc {
+        match self {
+            PyLoc::Var(l) => l
+        }
+    }
+}
+*/
 
 #[derive(Debug)]
 struct PyGen {
@@ -79,7 +94,6 @@ impl PyGen {
                     } else {
                         panic!("Code is not only functions.")
                     }
-                    //let CompoundStatement::Funcdef(funcdef)>
                 },
                 _ => panic!("Code is not only functions.")
             }
@@ -102,6 +116,14 @@ impl PyGen {
             .clone();
         
         self.circ_enter_fn(name.to_owned(), Some(Ty::Int(32)));
+
+        // TODO HANDLE OTHER KINDS OF ARGS AND ARG TYPES
+        // TODO OTHER TYPES OF VISIBILITY
+        for arg in func.parameters.args.iter() {
+            let r = self.circ_declare_input(arg.0.clone(), &Ty::Int(32), PUBLIC_VIS, None, false);
+            self.unwrap(r);
+        }
+
         for ref stmt in func.code{
             self.gen_stmt(stmt);
         }
@@ -140,6 +162,19 @@ impl PyGen {
         }
     }
 
+    fn circ_declare_input(
+        &self,
+        name: String,
+        ty: &Ty,
+        vis: Option<PartyId>,
+        precomputed_value: Option<PyTerm>,
+        mangle_name: bool,
+    ) -> Result<PyTerm, CircError> {
+        self.circ
+            .borrow_mut()
+            .declare_input(name, ty, vis, precomputed_value, mangle_name)
+    }
+
     fn gen_stmt(&mut self, stmt: &Statement){
         match stmt {
             Statement::Return(ret) => {
@@ -162,6 +197,12 @@ impl PyGen {
                 self.integer(int)
                 
             },
+            Expression::False => {
+                self.boolean(false)
+            },
+            Expression::True => {
+                self.boolean(true)
+            },
             Expression::Call(name_expr, arguments) => {
                 // Get arguments
                 let args = arguments
@@ -182,6 +223,12 @@ impl PyGen {
                     unimplemented!("Can only handle builtin functions")
                 }
             },
+            Expression::Name(name) => {
+                //PyLoc::Var(Loc::local(name))
+                self
+                .unwrap(self.circ_get_value(Loc::local(name.clone())))
+                .unwrap_term()
+            }
             _ => unimplemented!("Expr {:#?} hasn't been implemented", expr)
         }
     }
@@ -212,9 +259,17 @@ impl PyGen {
         let num = i32::from_str(&int_str).unwrap();
         PyTerm{term: PyTermData::Int(size, bv_lit(num, size))}
     }
+
+    fn boolean(&self, b:bool) -> PyTerm{
+        PyTerm{term: PyTermData::Bool(bool_lit(b))}
+    }
     
     fn circify(&self) -> Circify<Pyt> {
         self.circ.replace(Circify::new(Pyt::new()))
+    }
+
+    fn circ_get_value(&self, loc: Loc) -> Result<Val<PyTerm>, CircError> {
+        self.circ.borrow().get_value(loc)
     }
 
     fn circ_return_(&self, ret: Option<PyTerm>) -> Result<(), CircError> {
