@@ -1,9 +1,6 @@
 //! Terms in Python variant
 #![allow(warnings)]
 #![allow(unused)]
-//use crate::circify::Embeddable;
-//use ty::Ty;
-//use crate::ir::term::{term, Term};
 use crate::ir::term::{Term, Op, Sort, term};
 use std::fmt::{self, Display, Formatter};
 use crate::circify::{CirCtx, Embeddable};

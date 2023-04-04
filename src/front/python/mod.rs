@@ -7,9 +7,9 @@ pub mod ty;
 use crate::ir::term::{Computations};
 use super::{FrontEnd, Mode};
 use std::path::PathBuf;
-use crate::ir::term::{bv_lit, bool_lit, term, NOT, AND, OR, Term, Sort, check, Op, Value, leaf_term};
+use crate::ir::term::{bv_lit, term, NOT, AND, OR, Term, Sort, check, bool_lit};
 use parser::PythonParser;
-use python_parser::ast::{CompoundStatement, Funcdef, Statement, Expression, IntegerType};
+use python_parser::ast::{CompoundStatement, Funcdef, Statement, Expression, IntegerType, Argument};
 use term::{PyTerm, PyTermData, Pyt, cast_to_bool};
 use std::fs;
 use std::collections::HashMap;
@@ -18,10 +18,6 @@ use std::fmt::Display;
 use std::str::FromStr;
 use std::cell::RefCell;
 use crate::front::python::ty::Ty;
-
-//use crate::ir::term::Op;
-//use crate::ir::term::leaf_term;
-//use crate::ir::term::Value;
 
 /// Inputs to Python compiler
 pub struct Inputs {
@@ -106,13 +102,16 @@ impl PyGen {
             .clone();
         
         self.circ_enter_fn(name.to_owned(), Some(Ty::Int(32)));
-        // TODO handle more than one statement
-        self.gen_stmt(&func.code[0]);
+        for ref stmt in func.code{
+            self.gen_stmt(stmt);
+        }
         // manually add calls to builtins for testing
+        /*
         let assume_term = PyTerm{term: PyTermData::Bool(leaf_term(Op::Const(Value::Bool(false))))};
         let assert_term = PyTerm{term: PyTermData::Bool(leaf_term(Op::Const(Value::Bool(false))))};
         self.maybe_handle_builtins(&"__VERIFIER_assume".to_string(), &vec![assume_term]);
         self.maybe_handle_builtins(&"__VERIFIER_assert".to_string(), &vec![assert_term]);
+        */
         if let Some(_r) = self.circ_exit_fn() {
             match self.mode {
                 Mode::Proof => {
@@ -147,7 +146,12 @@ impl PyGen {
                 let ret: PyTerm = self.gen_expr(&ret[0]);
                 let ret_res = self.circ_return_(Some(ret));
                 self.unwrap(ret_res);
-            }
+            },
+            Statement::Assignment(lhs, rhs) => {
+                assert!(rhs.len() == 0); // can't handle real assignments yet
+                assert!(lhs.len() == 1); // can only handle one expr on lhs for now
+                self.gen_expr(&lhs[0]);
+            },
             _ => unimplemented!("Statement {:#?} hasn't been implemented", stmt)
         }
     }
@@ -158,23 +162,26 @@ impl PyGen {
                 self.integer(int)
                 
             },
-/*            Expression::Call(node) => {
-                let CallExpression { callee, arguments } = &node.node;
-                // Get function name
-                let fname = name_from_expr(&callee.node);
-
+            Expression::Call(name_expr, arguments) => {
                 // Get arguments
                 let args = arguments
                     .iter()
-                    .map(|e| self.gen_expr(&e.node))
+                    .map(|arg| match arg {
+                        Argument::Positional(expr) => self.gen_expr(&expr),
+                        _ => unimplemented!("Arg type not supported")
+                    })
                     .collect::<Vec<_>>();
-
+                let fname = match name_expr.as_ref() {
+                    Expression::Name(string) => string,
+                    _ => unimplemented!("Function name isn't string")
+                };
                 let maybe_return = self.maybe_handle_builtins(&fname, &args);
                 if let Some(r) = maybe_return {
-                    Ok(r)
+                    r
                 } else {
                     unimplemented!("Can only handle builtin functions")
-                }*/
+                }
+            },
             _ => unimplemented!("Expr {:#?} hasn't been implemented", expr)
         }
     }
