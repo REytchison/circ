@@ -86,6 +86,7 @@ impl PyGen {
         for stmt in ast{
 
             // TODO BETTER ERROR HANDLING
+            // TODO ROLL INTO gen_compound_stmt
             match stmt {
                 Statement::Compound(stmtbox) => {
                     let compound_stmt = *stmtbox;
@@ -189,7 +190,32 @@ impl PyGen {
                     self.gen_expr(&lhs[0]);
                 }
             },
+            Statement::Compound(stmt) => self.gen_compound_stmt(stmt),
             _ => unimplemented!("Statement {:#?} hasn't been implemented", stmt)
+        }
+    }
+
+    fn gen_compound_stmt(&mut self, stmt: &CompoundStatement){
+        match stmt {
+            CompoundStatement::If(cond_stmts, else_stmt_opt) => {
+                assert!(cond_stmts.len() == 1); // can't handle elif yet
+                let cond_stmt = &cond_stmts[0];
+                let cond = self.gen_expr(&cond_stmt.0);
+                let cond_term = cond.term.simple_term();
+                self.circ_enter_condition(cond_term.clone());
+                for inner_stmt in cond_stmt.1.iter(){
+                    self.gen_stmt(inner_stmt);
+                }
+                self.circ_exit_condition();
+                if let Some(else_stmt) = else_stmt_opt {
+                    self.circ_enter_condition(term!(NOT; cond_term));
+                    for inner_stmt in else_stmt.iter(){
+                        self.gen_stmt(inner_stmt);
+                    }
+                    self.circ_exit_condition();
+                }
+            },
+            _ => unimplemented!("Compound Statement {:#?} hasn't been implemented", stmt)
         }
     }
 
@@ -314,6 +340,14 @@ impl PyGen {
 
     fn circ_get_value(&self, loc: Loc) -> Result<Val<PyTerm>, CircError> {
         self.circ.borrow().get_value(loc)
+    }
+
+    fn circ_enter_condition(&self, cond: Term) {
+        self.circ.borrow_mut().enter_condition(cond).unwrap();
+    }
+
+    fn circ_exit_condition(&self) {
+        self.circ.borrow_mut().exit_condition()
     }
 
     fn circ_return_(&self, ret: Option<PyTerm>) -> Result<(), CircError> {

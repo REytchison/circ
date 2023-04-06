@@ -32,11 +32,21 @@ impl PyTermData {
     }
 }
 
+impl Display for PyTermData {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            PyTermData::Bool(x) => write!(f, "Bool({x})"),
+            PyTermData::Int(_, x) => write!(f, "Int({x})")
+        }
+    }
+}
+
 pub fn cast_to_bool(t: PyTerm) -> Term {
     cast(Some(Ty::Bool), t).term.simple_term()
 }
 
 pub fn cast(to_ty: Option<Ty>, t: PyTerm) -> PyTerm {
+    // TODO ADD CASTS BETWEEN BOOLS AND INTS
     let ty = t.term.type_();
     match t.term {
         PyTermData::Bool(ref term) => match to_ty {
@@ -120,7 +130,31 @@ impl Embeddable for Pyt{
                     )
                 )
             },
-            _ => unimplemented!("input type not supported yet")
+            Ty::Bool => Self::T{
+                term: PyTermData::Bool(
+                    ctx.cs.borrow_mut().new_var(
+                        &name,
+                        Sort::Bool,
+                        visibility,
+                        precompute.map(|p| p.term.simple_term())
+                    )
+                )
+            }
+        }
+    }
+
+    /// Construct an it-then-else (ternary) langauge value.
+    ///
+    /// Conceptually, `(ite cond t f)`
+    fn ite(&self, ctx: &mut CirCtx, cond: Term, t: Self::T, f: Self::T) -> Self::T{
+        match (t.term, f.term) {
+            (PyTermData::Bool(a), PyTermData::Bool(b)) => Self::T {
+                term: PyTermData::Bool(term![Op::Ite; cond, a, b])
+            },
+            (PyTermData::Int(wa, a), PyTermData::Int(wb, b)) if wa == wb => Self::T {
+                term: PyTermData::Int(wa, term![Op::Ite; cond, a, b])
+            },
+            (t, f) => panic!("Cannot ITE {} and {}", t, f)
         }
     }
 
@@ -133,24 +167,7 @@ impl Embeddable for Pyt{
     ///    * `ctx`: circuit context: you must add the circuit-level *input*
     ///    * `ty`: the type
     fn create_uninit(&self, ctx: &mut CirCtx, ty: &Self::Ty) -> Self::T{
-        // TODO ADD REAL UNITIALIZED
-        let size:usize = 32;
-        let num:i32 = 0;
-        Self::T {
-            term: PyTermData::Int(32,bv_lit(num, size))
-        }
-    }
-
-    /// Construct an it-then-else (ternary) langauge value.
-    ///
-    /// Conceptually, `(ite cond t f)`
-    fn ite(&self, ctx: &mut CirCtx, cond: Term, t: Self::T, f: Self::T) -> Self::T{
-        // TODO ADD REAL ITE
-        let size:usize = 32;
-        let num:i32 = 0;
-        Self::T {
-            term: PyTermData::Int(32,bv_lit(num, size))
-        }
+        ty.default(ctx)
     }
 
     /// Create a new term for the default return value of a function returning type `ty`.
@@ -158,11 +175,18 @@ impl Embeddable for Pyt{
     // Because the type alias may change.
     #[allow(clippy::ptr_arg)]
     fn initialize_return(&self, ty: &Self::Ty, ssa_name: &String) -> Self::T{
-        // TODO ADD REAL DEFAULT RETURN VAL
-        let size:usize = 32;
-        let num:i32 = 0;
-        Self::T {
-            term: PyTermData::Int(32,bv_lit(num, size))
+        // TODO UNCLEAR HOW THIS IS DIFFERENT FROM create_uninit
+        match ty{
+            Ty::Int(w) => {
+                PyTerm{
+                    term: PyTermData::Int(*w, Sort::BitVector(*w).default_term())
+                }
+            },
+            Ty::Bool => {
+                PyTerm {
+                    term: PyTermData::Bool(Sort::Bool.default_term())
+                }
+            }
         }
     }
 }
