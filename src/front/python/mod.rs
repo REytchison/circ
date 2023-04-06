@@ -52,12 +52,12 @@ impl FrontEnd for Python{
         cs
     }
 }
-/*
+
 #[derive(Clone)]
 enum PyLoc {
     Var(Loc)
 }
-
+/*
 impl PyLoc {
     fn loc(&self) -> &Loc {
         match self {
@@ -176,9 +176,18 @@ impl PyGen {
                 self.unwrap(ret_res);
             },
             Statement::Assignment(lhs, rhs) => {
-                assert!(rhs.len() == 0); // can't handle real assignments yet
                 assert!(lhs.len() == 1); // can only handle one expr on lhs for now
-                self.gen_expr(&lhs[0]);
+                if rhs.len() > 0 {
+                    assert!(rhs[0].len() <= 1); // can only handle one or less expr on rhs for now
+                    // real assignment
+                    let loc = self.gen_lval(&lhs[0]);
+                    let val = self.gen_expr(&rhs[0][0]);
+                    let assign_res = self.gen_assign(loc, val);
+                    self.unwrap(assign_res);
+                } else {
+                    // just expression(s)
+                    self.gen_expr(&lhs[0]);
+                }
             },
             _ => unimplemented!("Statement {:#?} hasn't been implemented", stmt)
         }
@@ -236,7 +245,6 @@ impl PyGen {
                 }
             },
             Expression::Name(name) => {
-                //PyLoc::Var(Loc::local(name))
                 self
                 .unwrap(self.circ_get_value(Loc::local(name.clone())))
                 .unwrap_term()
@@ -262,6 +270,26 @@ impl PyGen {
         }
     }
 
+    fn gen_lval(&mut self, expr: &Expression) -> PyLoc {
+        match &expr {
+            Expression::Name(string) => {
+                PyLoc::Var(Loc::local(string.clone()))
+            },
+            _ => unimplemented!("Invalid left value")
+        }
+    }
+
+    fn gen_assign(&mut self, loc: PyLoc, val: PyTerm) -> Result<PyTerm, String> {
+        match loc {
+            PyLoc::Var(l) => {
+                Ok(self
+                    .circ_assign(l, Val::Term(val))
+                    .map_err(|e| format!("{e}"))?
+                    .unwrap_term())
+            }
+        }
+    }
+
 
     fn integer(&self, int: &IntegerType) -> PyTerm {
         let radix:u32 = 10;
@@ -278,6 +306,10 @@ impl PyGen {
     
     fn circify(&self) -> Circify<Pyt> {
         self.circ.replace(Circify::new(Pyt::new()))
+    }
+
+    fn circ_assign(&self, loc: Loc, val: Val<PyTerm>) -> Result<Val<PyTerm>, CircError> {
+        self.circ.borrow_mut().assign(loc, val)
     }
 
     fn circ_get_value(&self, loc: Loc) -> Result<Val<PyTerm>, CircError> {
