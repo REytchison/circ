@@ -40,7 +40,7 @@ impl FrontEnd for Python{
     fn gen(i: Self::Inputs) -> Computations{
         // TODO error handling
         let code: String = fs::read_to_string(&i.file).unwrap();
-        let ast: Vec<Statement>  = PythonParser::parse_file(&code);
+        let ast: Vec<Statement>  = PythonParser::parse_code(&code);
         let mut pygen = PyGen::new(i, ast);
         pygen.entry_fn("main");
         let mut cs = Computations::new();
