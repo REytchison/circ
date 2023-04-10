@@ -3,6 +3,7 @@
 pub mod parser;
 pub mod term;
 pub mod ty;
+mod builtins;
 
 use crate::ir::term::{Computations, PartyId};
 use crate::front::PUBLIC_VIS;
@@ -19,6 +20,7 @@ use std::fmt::Display;
 use std::str::FromStr;
 use std::cell::RefCell;
 use crate::front::python::ty::Ty;
+use crate::front::python::builtins::range;
 
 /// Inputs to Python compiler
 pub struct Inputs {
@@ -215,6 +217,26 @@ impl PyGen {
                     self.circ_exit_condition();
                 }
             },
+            CompoundStatement::For{r#async, item, iterator, for_block, else_block} => {
+                assert!(!r#async); // can't handle async for loops
+                assert!(else_block.is_none()); // can't handle else block yet
+                // Get loop bounds
+                match &iterator[..] {
+                    [Expression::Call(box_expr, args)] if **box_expr == Expression::Name("range".to_string()) => {
+                        let range = range(&args).unwrap_or_else(|e| self.err(e));
+                        let _b = item;
+                        for _ in range{
+                            self.circ_enter_scope();
+                            for for_stmt in for_block{
+                                self.gen_stmt(for_stmt);
+                            }
+                            self.circ_exit_scope();
+                        }
+                    },
+                    _ => unimplemented!("Only supports range for iter for now")
+                }
+                // TODO USE item
+            }
             _ => unimplemented!("Compound Statement {:#?} hasn't been implemented", stmt)
         }
     }
@@ -222,14 +244,14 @@ impl PyGen {
     fn gen_expr(&mut self, expr: &Expression) -> PyTerm {
         match expr {
             Expression::Int(int) => {
-                self.integer(int)
+                Self::integer(int)
                 
             },
             Expression::False => {
-                self.boolean(false)
+                Self::boolean(false)
             },
             Expression::True => {
-                self.boolean(true)
+                Self::boolean(true)
             },
             Expression::Bop(bop, expr0, expr1) => {
                 let t0 = self.gen_expr(expr0);
@@ -316,17 +338,21 @@ impl PyGen {
         }
     }
 
-
-    fn integer(&self, int: &IntegerType) -> PyTerm {
+    fn pyint_to_i32(int: &IntegerType) -> i32{
         let radix:u32 = 10;
         // TODO handling int size?
-        let size = 32;
         let int_str: String = int.to_str_radix(radix);
-        let num = i32::from_str(&int_str).unwrap();
+        return i32::from_str(&int_str).unwrap();
+    }
+
+    fn integer(int: &IntegerType) -> PyTerm {
+        // TODO handling int size?
+        let size = 32;
+        let num = Self::pyint_to_i32(int);
         PyTerm{term: PyTermData::Int(size, bv_lit(num, size))}
     }
 
-    fn boolean(&self, b:bool) -> PyTerm{
+    fn boolean(b:bool) -> PyTerm{
         PyTerm{term: PyTermData::Bool(bool_lit(b))}
     }
     
@@ -372,5 +398,13 @@ impl PyGen {
 
     fn circ_exit_fn(&self) -> Option<Val<PyTerm>> {
         self.circ.borrow_mut().exit_fn()
+    }
+
+    fn circ_enter_scope(&self) {
+        self.circ.borrow_mut().enter_scope()
+    }
+
+    fn circ_exit_scope(&self) {
+        self.circ.borrow_mut().exit_scope()
     }
 }

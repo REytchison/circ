@@ -14,7 +14,7 @@ fn main() {
     }
     let path = Path::new(&args[1]);
     let code: String = fs::read_to_string(path).unwrap();
-    let ast: Vec<Statement>  = PythonParser::parse_file(&code);
+    let ast: Vec<Statement>  = PythonParser::parse_code(&code);
     for el in ast{
         println!("{:?}\n", el);
     }

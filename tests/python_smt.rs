@@ -1,12 +1,11 @@
 //! run smt tests: cargo test --test python_smt --features smt,python
+#![cfg(all(feature = "python", feature="smt"))]
 use circ::front::python::{self, Python};
 use circ::ir::opt::{opt, Opt};
 use circ::ir::term::Computations;
 use std::path::PathBuf;
 use circ::target::smt::find_model;
 use circ::front::FrontEnd;
-
-
 /// Optimize according to SMT mode in circ.rs
 fn smt_optimize(cs: Computations) -> Computations{
     let mut opts = Vec::new();
@@ -56,7 +55,7 @@ fn smt_holds_test(test_file: &str) -> bool{
 }
 
 #[test]
-fn test0(){
+fn basic_fail(){
     let holds_expected = false;
     let test_python_file = "assert_assume_fails.py";
     let model_holds = smt_holds_test(&test_python_file);
@@ -64,7 +63,7 @@ fn test0(){
 }
 
 #[test]
-fn test1(){
+fn basic_ok(){
     let holds_expected = true;
     let test_python_file = "assert_assume_ok.py";
     let model_holds = smt_holds_test(&test_python_file);
@@ -72,7 +71,7 @@ fn test1(){
 }
 
 #[test]
-fn test2(){
+fn assign_ok(){
     let holds_expected = true;
     let test_python_file = "assign_ok.py";
     let model_holds = smt_holds_test(&test_python_file);
@@ -80,9 +79,17 @@ fn test2(){
 }
 
 #[test]
-fn test3(){
+fn if_ok(){
     let holds_expected = true;
     let test_python_file = "if_ok.py";
+    let model_holds = smt_holds_test(&test_python_file);
+    assert_eq!(model_holds, holds_expected);
+}
+
+#[test]
+fn for_ok(){
+    let holds_expected = true;
+    let test_python_file = "for_ok.py";
     let model_holds = smt_holds_test(&test_python_file);
     assert_eq!(model_holds, holds_expected);
 }
