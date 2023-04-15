@@ -462,6 +462,22 @@ impl<E: Embeddable> Circify<E> {
         }
     }
 
+    /// Get whether declaration of variable already exists in scope or globals
+    pub fn already_declared(&self, name: &str) -> bool{
+        // locals
+        if let Some(fn_) = self.fn_stack.last() {
+            for (_lex_i, e) in fn_.stack.iter().enumerate().rev() {
+                if let StateEntry::Lex(l) = e {
+                    if l.has_name(name) {
+                        return true;
+                    }
+                }
+            }
+        }
+        //if no local, return whether global declared
+        return self.globals.has_name(name);
+    }
+
     /// Declare a new *input* to the computation.
     ///
     /// See [Embeddable::declare_input]

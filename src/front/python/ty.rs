@@ -4,6 +4,10 @@ use std::fmt::{self, Display, Formatter};
 use super::term::{PyTerm, PyTermData};
 use crate::circify::CirCtx;
 use crate::ir::term::{Term, Sort};
+use std::str::FromStr;
+
+pub const PY_INT_SIZE: usize = 32;
+
 /// A type
 #[derive(Clone, Eq)]
 pub enum Ty {
@@ -33,6 +37,20 @@ impl Ty{
         }
     }
 }
+
+
+impl FromStr for Ty {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err>{
+        match s {
+            "int" => Ok(Self::Int(PY_INT_SIZE)),
+            "bool" => Ok(Self::Bool),
+            _ => Err("ParsePythonTyError".to_string())
+        }
+    }
+}
+
 
 impl PartialEq for Ty {
     fn eq(&self, other: &Self) -> bool {

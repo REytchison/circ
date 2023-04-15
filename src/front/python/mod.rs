@@ -12,14 +12,14 @@ use std::path::PathBuf;
 use crate::ir::term::{bv_lit, term, NOT, AND, OR, Term, Sort, check, bool_lit};
 use parser::PythonParser;
 use python_parser::ast::{CompoundStatement, Funcdef, Statement, Expression, IntegerType, Argument, Bop};
-use term::{PyTerm, PyTermData, Pyt, cast_to_bool, eq, neq, add, bitxor};
+use term::{PyTerm, PyTermData, Pyt, cast_to_bool, eq, neq, add, bitxor,cast};
 use std::fs;
 use std::collections::HashMap;
 use crate::circify::{CircError, Circify, Val, Loc};
 use std::fmt::Display;
 use std::str::FromStr;
 use std::cell::RefCell;
-use crate::front::python::ty::Ty;
+use crate::front::python::ty::{Ty, PY_INT_SIZE};
 use crate::front::python::builtins::range;
 
 /// Inputs to Python compiler
@@ -118,12 +118,18 @@ impl PyGen {
             .unwrap_or_else(|| panic!("Code does not have main function"))
             .clone();
         
-        self.circ_enter_fn(name.to_owned(), Some(Ty::Int(32)));
+        self.circ_enter_fn(name.to_owned(), Some(Ty::Int(PY_INT_SIZE)));
 
-        // TODO HANDLE OTHER KINDS OF ARGS AND ARG TYPES
         // TODO OTHER TYPES OF VISIBILITY
         for arg in func.parameters.args.iter() {
-            let r = self.circ_declare_input(arg.0.clone(), &Ty::Int(32), PUBLIC_VIS, None, false);
+            let arg_name = &arg.0;
+            let ty_expr = arg.1.clone().unwrap_or_else(|| panic!("Argument does not have type hint"));
+            let ty_string = match ty_expr{
+                Expression::Name(string) => string,
+                _ => panic!("Type hint is not Name")
+            };
+            let ty: Ty = Ty::from_str(&ty_string).unwrap_or_else(|e| self.err(e));
+            let r = self.circ_declare_input(arg_name.clone(), &ty, PUBLIC_VIS, None, false);
             self.unwrap(r);
         }
 
@@ -171,6 +177,16 @@ impl PyGen {
             .declare_input(name, ty, vis, precomputed_value, mangle_name)
     }
 
+    fn gen_decl(&mut self, name: &str, ty_str: &str, term: PyTerm){
+        let ty: Ty = Ty::from_str(ty_str).unwrap_or_else(|e| self.err(e));
+        let res = self.circ_declare_init(
+            name.to_string(),
+            ty.clone(),
+            Val::Term(cast(Some(ty.clone()), term.clone())),
+        );
+        self.unwrap(res);
+    }
+
     fn gen_stmt(&mut self, stmt: &Statement){
         match stmt {
             Statement::Return(ret) => {
@@ -181,10 +197,17 @@ impl PyGen {
             Statement::Assignment(lhs, rhs) => {
                 assert!(lhs.len() == 1); // can only handle one expr on lhs for now
                 if rhs.len() > 0 {
-                    assert!(rhs[0].len() <= 1); // can only handle one or less expr on rhs for now
+                    assert!(rhs[0].len() == 1); // can only handle one or less expr on rhs for now
                     // real assignment
                     let loc = self.gen_lval(&lhs[0]);
                     let val = self.gen_expr(&rhs[0][0]);
+                    let already_declared = match &lhs[0] {
+                        Expression::Name(name) => self.circ_already_declared(name),
+                        _ => unimplemented!("Invalid left value")
+                    };
+                    if !already_declared{
+                        unimplemented!("Declarations are only implemented for typed assignments");
+                    }
                     let assign_res = self.gen_assign(loc, val);
                     self.unwrap(assign_res);
                 } else {
@@ -193,6 +216,27 @@ impl PyGen {
                 }
             },
             Statement::Compound(stmt) => self.gen_compound_stmt(stmt),
+            Statement::TypedAssignment(lhs, ty, rhs) =>{
+                assert!(lhs.len() == 1); // can only handle one expr on lhs for now
+                assert!(rhs.len() == 1); // can only handle one expr on rhs for now
+                let var_name = match &lhs[0] {
+                    Expression::Name(name) => name,
+                    _ => panic!("Left value is not Name")
+                };
+                let ty_str = match ty {
+                    Expression::Name(name) => name,
+                    _ => panic!("Type annotation is not Name")
+                };
+                let loc = self.gen_lval(&lhs[0]);
+                let val = self.gen_expr(&rhs[0]);
+                if self.circ_already_declared(var_name){
+                    // ignore type hint for non-declaration assignments
+                    let assign_res = self.gen_assign(loc, val);
+                    self.unwrap(assign_res);
+                } else {
+                    self.gen_decl(&var_name, ty_str, val);
+                }
+            }
             _ => unimplemented!("Statement {:#?} hasn't been implemented", stmt)
         }
     }
@@ -224,7 +268,7 @@ impl PyGen {
                 match &iterator[..] {
                     [Expression::Call(box_expr, args)] if **box_expr == Expression::Name("range".to_string()) => {
                         let range = range(&args).unwrap_or_else(|e| self.err(e));
-                        let _b = item;
+                        let _placeholder_to_compile = item;
                         for _ in range{
                             self.circ_enter_scope();
                             for for_stmt in for_block{
@@ -360,6 +404,10 @@ impl PyGen {
         self.circ.replace(Circify::new(Pyt::new()))
     }
 
+    fn circ_already_declared(&self, name: &str) -> bool{
+        self.circ.borrow().already_declared(name)
+    }
+
     fn circ_assign(&self, loc: Loc, val: Val<PyTerm>) -> Result<Val<PyTerm>, CircError> {
         self.circ.borrow_mut().assign(loc, val)
     }
@@ -383,6 +431,16 @@ impl PyGen {
     fn circ_enter_fn(&self, f_name: String, ret_ty: Option<Ty>) {
         self.circ.borrow_mut().enter_fn(f_name, ret_ty)
     }
+    
+    fn circ_declare_init(
+        &self,
+        name: String,
+        ty: Ty,
+        val: Val<PyTerm>,
+    ) -> Result<Val<PyTerm>, CircError> {
+        self.circ.borrow_mut().declare_init(name, ty, val)
+    }
+
 
     /// Unwrap a result of an error and abort
     fn err<E: Display>(&self, e: E) -> ! {

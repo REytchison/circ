@@ -54,11 +54,14 @@ pub fn cast(to_ty: Option<Ty>, t: PyTerm) -> PyTerm {
             Some(Ty::Int(_w)) => unimplemented!("Casting from bool to int not added yet"),
             None => panic!("Bad cast from {} to {:?}", ty, to_ty)
         },
-        PyTermData::Int(w, ref term) => match to_ty {
+        PyTermData::Int(w0, ref term) => match to_ty {
             Some(Ty::Bool) => PyTerm {
-                term: PyTermData::Bool(term![Op::Not; term![Op::Eq; bv_lit(0, w), term.clone()]])
+                term: PyTermData::Bool(term![Op::Not; term![Op::Eq; bv_lit(0, w0), term.clone()]])
             },
-            Some(Ty::Int(w)) => unimplemented!("Casting from int to int not added yet"),
+            Some(Ty::Int(w1)) => PyTerm {
+                // Python ints can increase in size, so no reason to not pick larger size
+                term: PyTermData::Int(if (w0 > w1) {w0} else {w1}, term.clone())
+            },
             None => panic!("Bad cast from {} to {:?}", ty, to_ty)
         }
     }
@@ -231,7 +234,12 @@ fn wrap_bin_arith(
                 term: PyTermData::Int(*wx, func(x.clone(), y.clone()))
             })
         },
-        (_, _) => Err(format!("Cannot perform op '{name}' on {a} and {b}")),
+        (PyTermData::Bool(x), PyTermData::Bool(y)) => {
+            Ok(PyTerm {
+                term: PyTermData::Bool(func(x.clone(), y.clone()))
+            })
+        },
+        (_, _) => Err(format!(" op '{name}' on {a} and {b}")),
     }
 }
 
