@@ -12,21 +12,21 @@ use crate::circify::Typed;
 #[derive(Clone, Debug)]
 pub enum PyTermData {
     Bool(Term),
-    Int(usize, Term)
+    Int(Term)
 }
 
 impl PyTermData {
     pub fn type_(&self) -> Ty {
         match self {
             Self::Bool(_) => Ty::Bool,
-            Self::Int(w, _) => Ty::Int(*w)
+            Self::Int(_) => Ty::Int
         }
     }
     
     pub fn simple_term(&self) -> Term {
         match self {
             PyTermData::Bool(b) => b.clone(),
-            PyTermData::Int(_, b) => b.clone(),
+            PyTermData::Int(b) => b.clone(),
             _ => panic!(),
         }
     }
@@ -36,7 +36,7 @@ impl Display for PyTermData {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             PyTermData::Bool(x) => write!(f, "Bool({x})"),
-            PyTermData::Int(_, x) => write!(f, "Int({x})")
+            PyTermData::Int(x) => write!(f, "Int({x})")
         }
     }
 }
@@ -51,16 +51,16 @@ pub fn cast(to_ty: Option<Ty>, t: PyTerm) -> PyTerm {
     match t.term {
         PyTermData::Bool(ref term) => match to_ty {
             Some(Ty::Bool) => t.clone(),
-            Some(Ty::Int(_w)) => unimplemented!("Casting from bool to int not added yet"),
+            Some(Ty::Int) => unimplemented!("Casting from bool to int not added yet"),
             None => panic!("Bad cast from {} to {:?}", ty, to_ty)
         },
-        PyTermData::Int(w0, ref term) => match to_ty {
+        PyTermData::Int(ref term) => match to_ty {
             Some(Ty::Bool) => PyTerm {
-                term: PyTermData::Bool(term![Op::Not; term![Op::Eq; bv_lit(0, w0), term.clone()]])
+                term: PyTermData::Bool(term![Op::Not; term![Op::Eq; bv_lit(0, PY_INT_SIZE), term.clone()]])
             },
-            Some(Ty::Int(w1)) => PyTerm {
+            Some(Ty::Int) => PyTerm {
                 // Python ints can increase in size, so no reason to not pick larger size
-                term: PyTermData::Int(if (w0 > w1) {w0} else {w1}, term.clone())
+                term: PyTermData::Int(term.clone())
             },
             None => panic!("Bad cast from {} to {:?}", ty, to_ty)
         }
@@ -122,12 +122,11 @@ impl Embeddable for Pyt{
         precompute: Option<Self::T>,
     ) -> Self::T{
         match ty {
-            Ty::Int(w) => Self::T{
+            Ty::Int => Self::T{
                 term: PyTermData::Int(
-                    *w,
                     ctx.cs.borrow_mut().new_var(
                         &name,
-                        Sort::BitVector(*w),
+                        Sort::BitVector(PY_INT_SIZE),
                         visibility,
                         precompute.map(|p| p.term.simple_term())
                     )
@@ -154,8 +153,8 @@ impl Embeddable for Pyt{
             (PyTermData::Bool(a), PyTermData::Bool(b)) => Self::T {
                 term: PyTermData::Bool(term![Op::Ite; cond, a, b])
             },
-            (PyTermData::Int(wa, a), PyTermData::Int(wb, b)) if wa == wb => Self::T {
-                term: PyTermData::Int(wa, term![Op::Ite; cond, a, b])
+            (PyTermData::Int(a), PyTermData::Int(b)) => Self::T {
+                term: PyTermData::Int(term![Op::Ite; cond, a, b])
             },
             (t, f) => panic!("Cannot ITE {} and {}", t, f)
         }
@@ -180,9 +179,9 @@ impl Embeddable for Pyt{
     fn initialize_return(&self, ty: &Self::Ty, ssa_name: &String) -> Self::T{
         // TODO UNCLEAR HOW THIS IS DIFFERENT FROM create_uninit
         match ty{
-            Ty::Int(w) => {
+            Ty::Int => {
                 PyTerm{
-                    term: PyTermData::Int(*w, Sort::BitVector(*w).default_term())
+                    term: PyTermData::Int(Sort::BitVector(PY_INT_SIZE).default_term())
                 }
             },
             Ty::Bool => {
@@ -208,6 +207,21 @@ fn add_uint(a: Term, b: Term) -> Term {
 }
 
 pub fn add(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
+    /*
+    match (&a.term, &b.term) {
+        (PyTermData::Int(wx, x), PyTermData::Int(wy, y)) if => {
+            Ok(PyTerm {
+                term: PyTermData::Int(if, func(x.clone(), y.clone()))
+            })
+        },
+        (PyTermData::Bool(x), PyTermData::Bool(y)) => {
+            Ok(PyTerm {
+                term: PyTermData::Bool(func(x.clone(), y.clone()))
+            })
+        },
+        (_, _) => Err(format!(" op '{name}' on {a} and {b}")),
+    }
+    */
     wrap_bin_arith("+", add_uint, a, b)
 }
 
@@ -269,9 +283,9 @@ fn wrap_bin_arith(
     // TODO CONVERSIONS
     match (&a.term, &b.term) {
         // TODO WIDENING SEMANTICS AND BOOL ARITHMETIC
-        (PyTermData::Int(wx, x), PyTermData::Int(wy, y)) if wx == wy => {
+        (PyTermData::Int(x), PyTermData::Int(y)) => {
             Ok(PyTerm {
-                term: PyTermData::Int(*wx, func(x.clone(), y.clone()))
+                term: PyTermData::Int(func(x.clone(), y.clone()))
             })
         },
         (PyTermData::Bool(x), PyTermData::Bool(y)) => {
@@ -288,11 +302,11 @@ fn wrap_un_arith(
     func: fn(Term) -> Term,
     a: PyTerm
 ) -> Result<PyTerm, String> {
-    let int_a = cast(Some(Ty::Int(PY_INT_SIZE)),a);
+    let int_a = cast(Some(Ty::Int),a);
     match(&int_a.term) {
-        PyTermData::Int(wx, x) => {
+        PyTermData::Int(x) => {
             Ok(PyTerm {
-                term: PyTermData::Int(*wx, func(x.clone()))
+                term: PyTermData::Int(func(x.clone()))
             })
         },
         _ => Err(format!(" op '{name}' on {int_a} casting failed"))
@@ -315,7 +329,7 @@ fn wrap_bin_cmp(
     b: PyTerm,
 ) -> Result<PyTerm, String> {
     match (&a.term, &b.term) {
-        (PyTermData::Int(_w0, t0), PyTermData::Int(_w1, t1)) => {
+        (PyTermData::Int(t0), PyTermData::Int(t1)) => {
             Ok(PyTerm{
                 term: PyTermData::Bool(func(t0.clone(), t1.clone()))
             })

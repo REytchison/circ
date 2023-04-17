@@ -124,7 +124,7 @@ impl PyGen {
             .unwrap_or_else(|| panic!("Code does not have main function"))
             .clone();
         
-        self.circ_enter_fn(name.to_owned(), Some(Ty::Int(PY_INT_SIZE)));
+        self.circ_enter_fn(name.to_owned(), Some(Ty::Int));
 
         // TODO OTHER TYPES OF VISIBILITY
         for arg in func.parameters.args.iter() {
@@ -411,10 +411,8 @@ impl PyGen {
     }
 
     fn integer(int: &IntegerType) -> PyTerm {
-        // TODO handling int size?
-        let size = 32;
         let num = Self::pyint_to_i32(int);
-        PyTerm{term: PyTermData::Int(size, bv_lit(num, size))}
+        PyTerm{term: PyTermData::Int(bv_lit(num, PY_INT_SIZE))}
     }
 
     fn boolean(b:bool) -> PyTerm{
