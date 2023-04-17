@@ -110,3 +110,11 @@ fn ops_ok(){
     assert_eq!(model_holds, holds_expected);
 }
 
+#[test]
+fn cast_ok(){
+    let holds_expected = true;
+    let test_python_file = "coerce_ok.py";
+    let model_holds = smt_holds_test(&test_python_file);
+    assert_eq!(model_holds, holds_expected);
+}
+

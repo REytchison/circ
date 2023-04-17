@@ -46,12 +46,15 @@ pub fn cast_to_bool(t: PyTerm) -> Term {
 }
 
 pub fn cast(to_ty: Option<Ty>, t: PyTerm) -> PyTerm {
-    // TODO ADD CASTS BETWEEN BOOLS AND INTS
     let ty = t.term.type_();
     match t.term {
         PyTermData::Bool(ref term) => match to_ty {
             Some(Ty::Bool) => t.clone(),
-            Some(Ty::Int) => unimplemented!("Casting from bool to int not added yet"),
+            Some(Ty::Int) => PyTerm {
+                term: PyTermData::Int(
+                    term![Op::BvUext(PY_INT_SIZE-1); term![Op::BoolToBv; term.clone()]]
+                )
+            },
             None => panic!("Bad cast from {} to {:?}", ty, to_ty)
         },
         PyTermData::Int(ref term) => match to_ty {
@@ -59,7 +62,6 @@ pub fn cast(to_ty: Option<Ty>, t: PyTerm) -> PyTerm {
                 term: PyTermData::Bool(term![Op::Not; term![Op::Eq; bv_lit(0, PY_INT_SIZE), term.clone()]])
             },
             Some(Ty::Int) => PyTerm {
-                // Python ints can increase in size, so no reason to not pick larger size
                 term: PyTermData::Int(term.clone())
             },
             None => panic!("Bad cast from {} to {:?}", ty, to_ty)
@@ -68,8 +70,7 @@ pub fn cast(to_ty: Option<Ty>, t: PyTerm) -> PyTerm {
 }
 #[derive(Clone, Debug)]
 pub struct PyTerm {
-    pub term: PyTermData,
-    // add whether udef?
+    pub term: PyTermData
 }
 
 impl Display for PyTerm {
@@ -193,36 +194,38 @@ impl Embeddable for Pyt{
     }
 }
 
-
-pub fn eq(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
-    wrap_bin_cmp("==", eq_base, a, b)
+/// For operations which always coerce to numeric types or are bitvec ops
+fn wrap_bin_arith(
+    name: &str,
+    func: fn(Term, Term) -> Term,
+    a: PyTerm,
+    b: PyTerm,
+) -> Result<PyTerm, String> {
+    match (&a.term) {
+        // TODO handle each case explicitly?
+        PyTermData::Int(x) => {
+            let b_cast = cast(Some(Ty::Int), b).term.simple_term();
+            Ok(PyTerm {
+                term: PyTermData::Int(func(x.clone(), b_cast))
+            })
+        },
+        PyTermData::Bool(_) => {
+            let a_cast = cast(Some(Ty::Int), a).term.simple_term();
+            let b_cast = cast(Some(Ty::Int), b).term.simple_term();
+            Ok(PyTerm {
+                term: PyTermData::Int(func(a_cast, b_cast))
+            })
+        },
+        (_) => Err(format!(" op '{name}' on {a} and {b}")),
+    }
 }
 
-pub fn ne(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
-    wrap_bin_cmp("!=", ne_base, a, b)
-}
-
-fn add_uint(a: Term, b: Term) -> Term {
+fn add_int(a: Term, b: Term) -> Term {
     term![Op::BvNaryOp(BvNaryOp::Add); a, b]
 }
 
 pub fn add(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
-    /*
-    match (&a.term, &b.term) {
-        (PyTermData::Int(wx, x), PyTermData::Int(wy, y)) if => {
-            Ok(PyTerm {
-                term: PyTermData::Int(if, func(x.clone(), y.clone()))
-            })
-        },
-        (PyTermData::Bool(x), PyTermData::Bool(y)) => {
-            Ok(PyTerm {
-                term: PyTermData::Bool(func(x.clone(), y.clone()))
-            })
-        },
-        (_, _) => Err(format!(" op '{name}' on {a} and {b}")),
-    }
-    */
-    wrap_bin_arith("+", add_uint, a, b)
+    wrap_bin_arith("+", add_int, a, b)
 }
 
 fn bitand_uint(a: Term, b: Term) -> Term {
@@ -274,42 +277,24 @@ pub fn floor_div(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
     wrap_bin_arith("//", floor_div_uint, a, b)
 }
 
-fn wrap_bin_arith(
-    name: &str,
-    func: fn(Term, Term) -> Term,
-    a: PyTerm,
-    b: PyTerm,
-) -> Result<PyTerm, String> {
-    // TODO CONVERSIONS
-    match (&a.term, &b.term) {
-        // TODO WIDENING SEMANTICS AND BOOL ARITHMETIC
-        (PyTermData::Int(x), PyTermData::Int(y)) => {
-            Ok(PyTerm {
-                term: PyTermData::Int(func(x.clone(), y.clone()))
-            })
-        },
-        (PyTermData::Bool(x), PyTermData::Bool(y)) => {
-            Ok(PyTerm {
-                term: PyTermData::Bool(func(x.clone(), y.clone()))
-            })
-        },
-        (_, _) => Err(format!(" op '{name}' on {a} and {b}")),
-    }
-}
-
 fn wrap_un_arith(
     name: &str,
     func: fn(Term) -> Term,
     a: PyTerm
 ) -> Result<PyTerm, String> {
-    let int_a = cast(Some(Ty::Int),a);
-    match(&int_a.term) {
+    match(&a.term) {
         PyTermData::Int(x) => {
             Ok(PyTerm {
                 term: PyTermData::Int(func(x.clone()))
             })
         },
-        _ => Err(format!(" op '{name}' on {int_a} casting failed"))
+        PyTermData::Bool(x) => {
+            let a_cast = cast(Some(Ty::Int), a).term.simple_term();
+            Ok(PyTerm {
+                term: PyTermData::Int(func(a_cast))
+            })
+        },
+        _ => Err(format!(" op '{name}' on {a} casting failed"))
     }
 }
 
@@ -322,25 +307,44 @@ pub fn minus(a: PyTerm) -> Result<PyTerm, String> {
 }
 
 fn wrap_bin_cmp(
-    // TODO HANDLE MORE DATATYPES AND CONVERSIONS
     name: &str,
     func: fn(Term, Term) -> Term,
     a: PyTerm,
     b: PyTerm,
 ) -> Result<PyTerm, String> {
     match (&a.term, &b.term) {
-        (PyTermData::Int(t0), PyTermData::Int(t1)) => {
-            Ok(PyTerm{
-                term: PyTermData::Bool(func(t0.clone(), t1.clone()))
-            })
-        },
         (PyTermData::Bool(t0), PyTermData::Bool(t1)) => {
             Ok(PyTerm{
                 term: PyTermData::Bool(func(t0.clone(), t1.clone()))
             })
         },
+        (PyTermData::Int(t0), PyTermData::Int(t1)) => {
+            Ok(PyTerm{
+                term: PyTermData::Bool(func(t0.clone(), t1.clone()))
+            })
+        },
+        (PyTermData::Int(t0), PyTermData::Bool(t1)) => {
+            let t1_cast = cast(Some(Ty::Int), b).term.simple_term();
+            Ok(PyTerm{
+                term: PyTermData::Bool(func(t0.clone(), t1_cast))
+            })
+        },
+        (PyTermData::Bool(t0), PyTermData::Int(t1)) => {
+            let t0_cast = cast(Some(Ty::Int), a).term.simple_term();
+            Ok(PyTerm{
+                term: PyTermData::Bool(func(t0_cast, t1.clone()))
+            })
+        }
         (_, _) => Err(format!("Cannot perform op {name} on {a} and {b}"))
     }
+}
+
+pub fn eq(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
+    wrap_bin_cmp("==", eq_base, a, b)
+}
+
+pub fn ne(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
+    wrap_bin_cmp("!=", ne_base, a, b)
 }
 
 fn eq_base(a: Term, b: Term) -> Term {
