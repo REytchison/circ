@@ -6,6 +6,11 @@ use crate::circify::CirCtx;
 use crate::ir::term::{Term, Sort};
 use std::str::FromStr;
 
+/*
+Note: Python integers are more precisely represented with CirC's Sort::Int,
+which has arbitrary precision like Python integers. However Sort::BitVector was
+chosen because Sort::Int currently supports very few operations.
+*/
 pub const PY_INT_SIZE: usize = 32;
 
 /// A type

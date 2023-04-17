@@ -11,8 +11,14 @@ use super::{FrontEnd, Mode};
 use std::path::PathBuf;
 use crate::ir::term::{bv_lit, term, NOT, AND, OR, Term, Sort, check, bool_lit};
 use parser::PythonParser;
-use python_parser::ast::{CompoundStatement, Funcdef, Statement, Expression, IntegerType, Argument, Bop};
-use term::{PyTerm, PyTermData, Pyt, cast_to_bool, eq, neq, add, bitxor,cast};
+use python_parser::ast::{
+    CompoundStatement, Funcdef, Statement, Expression, IntegerType, Argument,
+    Bop, Uop
+};
+use term::{
+    PyTerm, PyTermData, Pyt, cast_to_bool, eq, ne, add, bitxor, cast, 
+    floor_div, bitand, bitor, lt, gt, le, ge, sub, mult, minus
+};
 use std::fs;
 use std::collections::HashMap;
 use crate::circify::{CircError, Circify, Val, Loc};
@@ -300,20 +306,14 @@ impl PyGen {
             Expression::Bop(bop, expr0, expr1) => {
                 let t0 = self.gen_expr(expr0);
                 let t1 = self.gen_expr(expr1);
-                match bop {
-                    Bop::Eq => {
-                        eq(t0, t1).unwrap()
-                    },
-                    Bop::Neq => {
-                        neq(t0, t1).unwrap()
-                    },
-                    Bop::Add => {
-                        add(t0, t1).unwrap()
-                    },
-                    Bop::BitXor => {
-                        bitxor(t0, t1).unwrap()
-                    }
-                    _ => unimplemented!("Binary op not implemented yet")
+                let f = self.get_bin_op(bop);
+                f(t0, t1).unwrap()
+            },
+            Expression::Uop(uop, expr) => {
+                let t = self.gen_expr(expr);
+                match uop {
+                    Uop::Minus => minus(t).unwrap(),
+                    _ => unimplemented!("Unary op not implemented yet")
                 }
             }
             Expression::Call(name_expr, arguments) => {
@@ -342,6 +342,27 @@ impl PyGen {
                 .unwrap_term()
             }
             _ => unimplemented!("Expr {:#?} hasn't been implemented", expr)
+        }
+    }
+
+    fn get_bin_op(&self, op: &Bop) -> fn(PyTerm, PyTerm) -> Result<PyTerm, String>{
+        match op {
+            Bop::Eq => eq,
+            Bop::Neq => ne,
+            Bop::Add => add,
+            Bop::BitXor => bitxor,
+            Bop::Sub => sub,
+            Bop::Mult => mult,
+            Bop::Floordiv => floor_div,
+            Bop::BitAnd => bitand,
+            Bop::BitOr => bitor,
+            Bop::Lt => lt,
+            Bop::Gt => gt,
+            Bop::Leq => le,
+            Bop::Geq => ge,
+            Bop::And => bitand,
+            Bop::Or => bitor, 
+            _ => unimplemented!("Binary op not implemented yet")
         }
     }
 

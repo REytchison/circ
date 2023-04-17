@@ -101,3 +101,12 @@ fn decl_ok(){
     let model_holds = smt_holds_test(&test_python_file);
     assert_eq!(model_holds, holds_expected);
 }
+
+#[test]
+fn ops_ok(){
+    let holds_expected = true;
+    let test_python_file = "ops_ok.py";
+    let model_holds = smt_holds_test(&test_python_file);
+    assert_eq!(model_holds, holds_expected);
+}
+

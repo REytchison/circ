@@ -1,12 +1,12 @@
 //! Terms in Python variant
 #![allow(warnings)]
 #![allow(unused)]
-use crate::ir::term::{Term, Op, Sort, term, BvNaryOp};
+use crate::ir::term::{Term, Op, Sort, term, BvNaryOp, BvBinPred, BvBinOp, BvUnOp};
 use std::fmt::{self, Display, Formatter};
 use crate::circify::{CirCtx, Embeddable};
 use crate::ir::term::{bv_lit};
 use crate::front::PartyId;
-use crate::front::python::ty::Ty;
+use crate::front::python::ty::{Ty, PY_INT_SIZE};
 use crate::circify::Typed;
 
 #[derive(Clone, Debug)]
@@ -199,11 +199,10 @@ pub fn eq(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
     wrap_bin_cmp("==", eq_base, a, b)
 }
 
-pub fn neq(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
-    wrap_bin_cmp("!=", neq_base, a, b)
+pub fn ne(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
+    wrap_bin_cmp("!=", ne_base, a, b)
 }
 
-// TODO IS BvNaryOp THE CORRECT PRIMITIVE (vs Integer type)
 fn add_uint(a: Term, b: Term) -> Term {
     term![Op::BvNaryOp(BvNaryOp::Add); a, b]
 }
@@ -212,12 +211,53 @@ pub fn add(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
     wrap_bin_arith("+", add_uint, a, b)
 }
 
+fn bitand_uint(a: Term, b: Term) -> Term {
+    term![Op::BvNaryOp(BvNaryOp::And); a, b]
+}
+
+pub fn bitand(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
+    wrap_bin_arith("&", bitand_uint, a, b)
+}
+
+fn bitor_uint(a: Term, b: Term) -> Term {
+    term![Op::BvNaryOp(BvNaryOp::Or); a, b]
+}
+
+pub fn bitor(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
+    wrap_bin_arith("|", bitor_uint, a, b)
+}
+
+
 fn bitxor_uint(a: Term, b: Term) -> Term {
     term![Op::BvNaryOp(BvNaryOp::Xor); a, b]
 }
 
 pub fn bitxor(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
     wrap_bin_arith("^", bitxor_uint, a, b)
+}
+
+fn sub_uint(a: Term, b: Term) -> Term {
+    term![Op::BvBinOp(BvBinOp::Sub); a, b]
+}
+
+pub fn sub(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
+    wrap_bin_arith("-", sub_uint, a, b)
+}
+
+fn mult_uint(a: Term, b: Term) -> Term {
+    term![Op::BvNaryOp(BvNaryOp::Mul); a, b]
+}
+
+pub fn mult(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
+    wrap_bin_arith("*", mult_uint, a, b)
+}
+
+fn floor_div_uint(a: Term, b: Term) -> Term {
+    term![Op::BvBinOp(BvBinOp::Udiv); a, b]
+}
+
+pub fn floor_div(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
+    wrap_bin_arith("//", floor_div_uint, a, b)
 }
 
 fn wrap_bin_arith(
@@ -241,6 +281,30 @@ fn wrap_bin_arith(
         },
         (_, _) => Err(format!(" op '{name}' on {a} and {b}")),
     }
+}
+
+fn wrap_un_arith(
+    name: &str,
+    func: fn(Term) -> Term,
+    a: PyTerm
+) -> Result<PyTerm, String> {
+    let int_a = cast(Some(Ty::Int(PY_INT_SIZE)),a);
+    match(&int_a.term) {
+        PyTermData::Int(wx, x) => {
+            Ok(PyTerm {
+                term: PyTermData::Int(*wx, func(x.clone()))
+            })
+        },
+        _ => Err(format!(" op '{name}' on {int_a} casting failed"))
+    }
+}
+
+fn minus_uint(a: Term) -> Term {
+    term![Op::BvUnOp(BvUnOp::Neg); a]
+}
+
+pub fn minus(a: PyTerm) -> Result<PyTerm, String> {
+    wrap_un_arith("-", minus_uint, a)
 }
 
 fn wrap_bin_cmp(
@@ -269,6 +333,38 @@ fn eq_base(a: Term, b: Term) -> Term {
     term![Op::Eq; a, b]
 }
 
-fn neq_base(a: Term, b: Term) -> Term {
+fn ne_base(a: Term, b: Term) -> Term {
     term![Op::Not; term![Op::Eq; a, b]]
+}
+
+fn lt_int(a: Term, b: Term) -> Term {
+    term![Op::BvBinPred(BvBinPred::Slt); a, b]
+}
+
+pub fn lt(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
+    wrap_bin_cmp("<", lt_int, a, b)
+}
+
+fn le_int(a: Term, b: Term) -> Term {
+    term![Op::BvBinPred(BvBinPred::Sle); a, b]
+}
+
+pub fn le(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
+    wrap_bin_cmp("<=", le_int, a, b)
+}
+
+fn gt_int(a: Term, b: Term) -> Term {
+    term![Op::BvBinPred(BvBinPred::Sgt); a, b]
+}
+
+pub fn gt(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
+    wrap_bin_cmp(">", gt_int, a, b)
+}
+
+fn ge_int(a: Term, b: Term) -> Term {
+    term![Op::BvBinPred(BvBinPred::Sge); a, b]
+}
+
+pub fn ge(a: PyTerm, b: PyTerm) -> Result<PyTerm, String> {
+    wrap_bin_cmp(">=", ge_int, a, b)
 }
