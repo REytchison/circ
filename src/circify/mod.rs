@@ -583,6 +583,13 @@ impl<E: Embeddable> Circify<E> {
         Ok(self.get_scope_ref(idx))
     }
 
+    /// Lookup type for a loc
+    pub fn get_loc_type(&self, loc: &Loc) -> Result<E::Ty> {
+        let lex = self.get_lex_ref(loc)?;
+        // Get the type
+        Ok(lex.get_ty(&loc.name)?.clone())
+    }
+
     /// Declare `name` in the current scope as being a `ty`, and being equal to `val`.
     ///
     /// If `public`, then make it a public (fixed) rather than private (existential) circuit input.

@@ -283,11 +283,14 @@ fn main() {
             opts.push(Opt::ScalarizeVars);
             opts.push(Opt::Flatten);
             opts.push(Opt::Sha);
-            opts.push(Opt::ConstantFold(Box::new([])));
+            // BAD (Breaks Python -> SMT Sometimes)
+            //opts.push(Opt::ConstantFold(Box::new([])));
             opts.push(Opt::ParseCondStores);
             // Tuples must be eliminated before oblivious array elim
             opts.push(Opt::Tuple);
-            opts.push(Opt::ConstantFold(Box::new([])));
+            // BAD (Breaks Python -> SMT Sometimes)
+            //opts.push(Opt::ConstantFold(Box::new([])));
+            
             opts.push(Opt::Tuple);
             opts.push(Opt::Obliv);
             // The obliv elim pass produces more tuples, that must be eliminated
@@ -300,8 +303,10 @@ fn main() {
             opts.push(Opt::LinearScan);
             // The linear scan pass produces more tuples, that must be eliminated
             opts.push(Opt::Tuple);
+            
             opts.push(Opt::Flatten);
-            opts.push(Opt::ConstantFold(Box::new([])));
+            // BAD (Breaks Python -> SMT Sometimes)
+            //opts.push(Opt::ConstantFold(Box::new([])));
             opt(cs, opts)
         }
     };

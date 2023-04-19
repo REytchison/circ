@@ -12,11 +12,13 @@ fn smt_optimize(cs: Computations) -> Computations{
     opts.push(Opt::ScalarizeVars);
     opts.push(Opt::Flatten);
     opts.push(Opt::Sha);
-    opts.push(Opt::ConstantFold(Box::new([])));
+    // BAD (May introduce instrs unsupported by SMT)
+    //opts.push(Opt::ConstantFold(Box::new([])));
     opts.push(Opt::ParseCondStores);
     // Tuples must be eliminated before oblivious array elim
     opts.push(Opt::Tuple);
-    opts.push(Opt::ConstantFold(Box::new([])));
+    // BAD (May introduce instrs unsupported by SMT)
+    //opts.push(Opt::ConstantFold(Box::new([])));
     opts.push(Opt::Tuple);
     opts.push(Opt::Obliv);
     // The obliv elim pass produces more tuples, that must be eliminated
@@ -30,7 +32,8 @@ fn smt_optimize(cs: Computations) -> Computations{
     // The linear scan pass produces more tuples, that must be eliminated
     opts.push(Opt::Tuple);
     opts.push(Opt::Flatten);
-    opts.push(Opt::ConstantFold(Box::new([])));
+    // BAD (May introduce instrs unsupported by SMT)
+    //opts.push(Opt::ConstantFold(Box::new([])));
     opt(cs, opts)
 
 }
@@ -118,3 +121,12 @@ fn cast_ok(){
     assert_eq!(model_holds, holds_expected);
 }
 
+#[test]
+fn const_fold_bug_fail(){
+    // when constant folding is enabled as compiler optimization
+    // this program will introduce invalid instructions to 
+    let holds_expected = false;
+    let test_python_file = "constfoldbug.py";
+    let model_holds = smt_holds_test(&test_python_file);
+    assert_eq!(model_holds, holds_expected);
+}

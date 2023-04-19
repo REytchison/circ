@@ -202,6 +202,10 @@ impl PyGen {
             },
             Statement::Assignment(lhs, rhs) => {
                 assert!(lhs.len() == 1); // can only handle one expr on lhs for now
+                // Ignore all strings for now
+                if let Expression::String(_) = lhs[0] {
+                    return;
+                }
                 if rhs.len() > 0 {
                     assert!(rhs[0].len() == 1); // can only handle one or less expr on rhs for now
                     // real assignment
@@ -242,7 +246,8 @@ impl PyGen {
                 } else {
                     self.gen_decl(&var_name, ty_str, val);
                 }
-            }
+            },
+            Statement::Assert(_, _) => {/* nop assert for CrossHair eval to work */},
             _ => unimplemented!("Statement {:#?} hasn't been implemented", stmt)
         }
     }
@@ -253,7 +258,7 @@ impl PyGen {
                 assert!(cond_stmts.len() == 1); // can't handle elif yet
                 let cond_stmt = &cond_stmts[0];
                 let cond = self.gen_expr(&cond_stmt.0);
-                let cond_term = cond.term.simple_term();
+                let cond_term = cast(Some(Ty::Bool), cond).term.simple_term();
                 self.circ_enter_condition(cond_term.clone());
                 for inner_stmt in cond_stmt.1.iter(){
                     self.gen_stmt(inner_stmt);
@@ -362,7 +367,7 @@ impl PyGen {
             Bop::Geq => ge,
             Bop::And => bitand,
             Bop::Or => bitor, 
-            _ => unimplemented!("Binary op not implemented yet")
+            _ => unimplemented!("BinaryOperator {:#?} hasn't been implemented", op)
         }
     }
 
@@ -395,8 +400,10 @@ impl PyGen {
     fn gen_assign(&mut self, loc: PyLoc, val: PyTerm) -> Result<PyTerm, String> {
         match loc {
             PyLoc::Var(l) => {
+                let loc_ty = self.circ.borrow().get_loc_type(&l).unwrap();
+                let cast_val = cast(Some(loc_ty), val);
                 Ok(self
-                    .circ_assign(l, Val::Term(val))
+                    .circ_assign(l, Val::Term(cast_val))
                     .map_err(|e| format!("{e}"))?
                     .unwrap_term())
             }

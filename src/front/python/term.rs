@@ -1,7 +1,7 @@
 //! Terms in Python variant
 #![allow(warnings)]
 #![allow(unused)]
-use crate::ir::term::{Term, Op, Sort, term, BvNaryOp, BvBinPred, BvBinOp, BvUnOp};
+use crate::ir::term::{Term, Op, Sort, term, BvNaryOp, BvBinPred, BvBinOp, BvUnOp, leaf_term, Value};
 use std::fmt::{self, Display, Formatter};
 use crate::circify::{CirCtx, Embeddable};
 use crate::ir::term::{bv_lit};
@@ -50,10 +50,13 @@ pub fn cast(to_ty: Option<Ty>, t: PyTerm) -> PyTerm {
     match t.term {
         PyTermData::Bool(ref term) => match to_ty {
             Some(Ty::Bool) => t.clone(),
-            Some(Ty::Int) => PyTerm {
-                term: PyTermData::Int(
-                    term![Op::BvUext(PY_INT_SIZE-1); term![Op::BoolToBv; term.clone()]]
-                )
+            Some(Ty::Int) => {
+                let true_lit = leaf_term(Op::Const(Value::Bool(true)));
+                PyTerm {
+                    term: PyTermData::Int(
+                        term![Op::Ite; term![Op::Eq; term.clone(), true_lit], bv_lit(1, PY_INT_SIZE), bv_lit(0, PY_INT_SIZE)]
+                    )
+                }
             },
             None => panic!("Bad cast from {} to {:?}", ty, to_ty)
         },
@@ -299,7 +302,8 @@ fn wrap_un_arith(
 }
 
 fn minus_uint(a: Term) -> Term {
-    term![Op::BvUnOp(BvUnOp::Neg); a]
+    let int_zero = bv_lit(0, PY_INT_SIZE);
+    sub_uint(int_zero, a)
 }
 
 pub fn minus(a: PyTerm) -> Result<PyTerm, String> {
