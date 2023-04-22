@@ -23,6 +23,42 @@ On Ubuntu `coinor-cbc` and `coinor-libcbc-dev`.
 
 You'll also need a stable Rust compiler.
 
+
+## Frontends
+
+### Python
+
+The Python frontend supports a small subset of Python. It has been tested with the SMT backend. 
+
+Build the python frontend and smt backend with:
+`cargo build --example circ -F python,c,smt`
+
+Run a python reachability test case with:
+`./target/debug/examples/circ --c-sv-functions examples/python/smt/TESTNAME.py smt`
+- Note: Paste a main function from a reachability test case into wrapper.py to run test
+  function from command line.
+
+Run tests in `tests/python_smt.rs` with:
+`cargo test --test python_smt --features smt,python`
+
+The Python frontend is in `src/circify/front/python` and has the following files:
+`builtins.rs` - Implement Python builtins
+`mod.rs` - Python frontend module
+`parser.rs` - Parse Python file
+`term.rs` - Define `PyTerm` datatype, language definition interface, and Python operations
+`ty.rs` - Define Python datatypes
+
+## Backends
+
+### SMT
+
+The SMT backend can be changed between [CVC4](https://cvc4.github.io/)
+and [cvc5](https://cvc5.github.io/) by setting the
+[RSMT2_CVC4_CMD](https://docs.rs/rsmt2/latest/rsmt2/conf/constant.CVC4_ENV_VAR.html)
+environmental variable to the SMT solver's invocation command (`cvc4` or
+`cvc5`).
+
+
 ## Architecture
 
 * Components:
@@ -61,13 +97,3 @@ You'll also need a stable Rust compiler.
     * hash-consing machinery
   * `examples/circ.rs`
     * This is the entry point to the zokrates copiler
-
-## Backends
-
-### SMT
-
-The SMT backend can be changed between [CVC4](https://cvc4.github.io/)
-and [cvc5](https://cvc5.github.io/) by setting the
-[RSMT2_CVC4_CMD](https://docs.rs/rsmt2/latest/rsmt2/conf/constant.CVC4_ENV_VAR.html)
-environmental variable to the SMT solver's invocation command (`cvc4` or
-`cvc5`).

@@ -65,15 +65,6 @@ impl FrontEnd for Python{
 enum PyLoc {
     Var(Loc)
 }
-/*
-impl PyLoc {
-    fn loc(&self) -> &Loc {
-        match self {
-            PyLoc::Var(l) => l
-        }
-    }
-}
-*/
 
 #[derive(Debug)]
 struct PyGen {
