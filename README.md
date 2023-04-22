@@ -34,14 +34,14 @@ Build the python frontend and smt backend with:
 `cargo build --example circ -F python,c,smt`
 
 Run a python reachability test case with:
-`./target/debug/examples/circ --c-sv-functions examples/python/smt/TESTNAME.py smt`
+`./target/debug/examples/circ --c-sv-functions examples/python/smt/reachable/TESTNAME.py smt`
 - Note: Paste a main function from a reachability test case into wrapper.py to run test
   function from command line.
 
 Run tests in `tests/python_smt.rs` with:
 `cargo test --test python_smt --features smt,python`
 
-The Python frontend is in `src/circify/front/python` and has the following files:
+The Python frontend is in `src/front/python` and has the following files:
 * `builtins.rs` - Implement Python builtins
 * `mod.rs` - Python frontend module
 * `parser.rs` - Parse Python file
