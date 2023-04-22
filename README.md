@@ -42,11 +42,11 @@ Run tests in `tests/python_smt.rs` with:
 `cargo test --test python_smt --features smt,python`
 
 The Python frontend is in `src/circify/front/python` and has the following files:
-`builtins.rs` - Implement Python builtins
-`mod.rs` - Python frontend module
-`parser.rs` - Parse Python file
-`term.rs` - Define `PyTerm` datatype, language definition interface, and Python operations
-`ty.rs` - Define Python datatypes
+* `builtins.rs` - Implement Python builtins
+* `mod.rs` - Python frontend module
+* `parser.rs` - Parse Python file
+* `term.rs` - Define `PyTerm` datatype, language definition interface, and Python operations
+* `ty.rs` - Define Python datatypes
 
 ## Backends
 
